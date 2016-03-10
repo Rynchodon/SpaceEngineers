@@ -2,7 +2,7 @@
 using VRage.ObjectBuilders;
 using System.Xml.Serialization;
 
-namespace Sandbox.Common.ObjectBuilders.Definitions
+namespace VRage.Game
 {
     [ProtoContract]
     [MyObjectBuilderDefinition]
@@ -16,6 +16,9 @@ namespace Sandbox.Common.ObjectBuilders.Definitions
 
             [XmlAttribute]
             public string ShootSoundName;
+
+            [XmlAttribute]
+            public int BurstFireRate;
         }
 
         [ProtoContract]
@@ -37,6 +40,9 @@ namespace Sandbox.Common.ObjectBuilders.Definitions
 
         [ProtoMember]
         public string NoAmmoSoundName = null;
+
+        [ProtoMember]
+        public string ReloadSoundName = null;
 
         [ProtoMember]
         public float DeviateShotAngle = 0;

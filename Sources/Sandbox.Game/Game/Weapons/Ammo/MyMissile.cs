@@ -13,15 +13,16 @@ using Sandbox.Game.Lights;
 using Sandbox.Game.Multiplayer;
 using Sandbox.Game.World;
 using Sandbox.Game.GameSystems;
-using Sandbox.Graphics.TransparentGeometry.Particles;
 using Sandbox.ModAPI;
 using Sandbox.ModAPI.Interfaces;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using VRage.Components;
+using VRage.Game.Components;
 using VRage.Utils;
 using VRageMath;
+using VRage.Game.Entity;
+using VRage.Game;
 
 #endregion
 
@@ -49,7 +50,7 @@ namespace Sandbox.Game.Weapons
             if (MySession.Static.Settings.RealisticSound && MyFakes.ENABLE_NEW_SOUNDS)
             {
                 Func<bool> expr = () =>
-                MySession.ControlledEntity != null && MySession.ControlledEntity.Entity is MyCharacter && MySession.ControlledEntity.Entity == m_collidedEntity;
+                MySession.Static.ControlledEntity != null && MySession.Static.ControlledEntity.Entity is MyCharacter && MySession.Static.ControlledEntity.Entity == m_collidedEntity;
                 m_soundEmitter.EmitterMethods[MyEntity3DSoundEmitter.MethodsEnum.ShouldPlay2D].Add(expr);
                 m_soundEmitter.EmitterMethods[MyEntity3DSoundEmitter.MethodsEnum.CanHear].Add(expr);
             }
@@ -128,8 +129,11 @@ namespace Sandbox.Game.Weapons
                         BoundingSphereD explosionSphere = new BoundingSphereD(m_collisionPoint.HasValue ? m_collisionPoint.Value : PositionComp.GetPosition(), radius);
 
                         MyEntity ownerEntity = null;
+                        var ownerId = Sync.Players.TryGetIdentity(m_owner);
+                        if (ownerId != null)
+                            ownerEntity = ownerId.Character;
                         //MyEntities.TryGetEntityById(m_owner, out ownerEntity);
-                        MyEntities.TryGetEntity(m_owner, out ownerEntity);
+                        
 
                         //  Call main explosion starter
                         MyExplosionInfo info = new MyExplosionInfo()
@@ -177,7 +181,7 @@ namespace Sandbox.Game.Weapons
                 if (m_missileAmmoDefinition.MissileSkipAcceleration)
                     Physics.LinearVelocity = WorldMatrix.Forward * m_missileAmmoDefinition.DesiredSpeed * 0.7f;
                 else
-                    Physics.LinearVelocity += PositionComp.WorldMatrix.Forward * m_missileAmmoDefinition.MissileAcceleration * MyEngineConstants.UPDATE_STEP_SIZE_IN_SECONDS;
+                    Physics.LinearVelocity += PositionComp.WorldMatrix.Forward * m_missileAmmoDefinition.MissileAcceleration * VRage.Game.MyEngineConstants.UPDATE_STEP_SIZE_IN_SECONDS;
 
                 if (m_smokeEffect == null)
                 {
@@ -271,7 +275,7 @@ namespace Sandbox.Game.Weapons
 
         public override void OnContactStart(ref MyPhysics.MyContactPointEvent value)
         {
-             MyEntity collidedEntity = GetOtherEntity(ref value) as MyEntity;
+            MyEntity collidedEntity = value.ContactPointEvent.GetOtherEntity(this) as MyEntity;
 
             if (collidedEntity == null)
                 return;
@@ -308,12 +312,12 @@ namespace Sandbox.Game.Weapons
         {
         }
 
-        public void DoDamage(float damage, MyDamageType damageType, bool sync, long attackerId)
+        public void DoDamage(float damage, MyStringHash damageType, bool sync, long attackerId)
         {
             if (sync)
             {
                 if (Sync.IsServer)
-                    MySyncHelper.DoDamageSynced(this, damage, damageType, attackerId);
+                    MySyncDamage.DoDamageSynced(this, damage, damageType, attackerId);
             }
             else
             {
@@ -338,9 +342,10 @@ namespace Sandbox.Game.Weapons
             OnDestroy();
         }
 
-        void IMyDestroyableObject.DoDamage(float damage, MyDamageType damageType, bool sync, MyHitInfo? hitInfo, long attackerId)
+        bool IMyDestroyableObject.DoDamage(float damage, MyStringHash damageType, bool sync, MyHitInfo? hitInfo, long attackerId)
         {
             DoDamage(damage, damageType, sync, attackerId);
+            return true;
         }
 
         float IMyDestroyableObject.Integrity

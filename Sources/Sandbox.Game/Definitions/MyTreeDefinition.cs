@@ -7,6 +7,9 @@ using Sandbox.Common.ObjectBuilders.Definitions;
 using Sandbox.Definitions;
 using VRage.Utils;
 using VRage.ObjectBuilders.Definitions;
+using Sandbox.Engine.Utils;
+using VRage.Game;
+using VRage.Game.Definitions;
 
 namespace Sandbox.Definitions
 {
@@ -14,6 +17,10 @@ namespace Sandbox.Definitions
     public class MyTreeDefinition : MyEnvironmentItemDefinition
     {
         public float BranchesStartHeight;
+        public float HitPoints;
+        public string CutEffect;
+        public string FallSound;
+        public string BreakSound;
 
         protected override void Init(MyObjectBuilder_DefinitionBase builder)
         {
@@ -23,6 +30,12 @@ namespace Sandbox.Definitions
             MyDebug.AssertDebug(ob != null);
 
             this.BranchesStartHeight = ob.BranchesStartHeight;
+            this.HitPoints = ob.HitPoints;
+
+            this.CutEffect = ob.CutEffect;
+
+            this.FallSound = ob.FallSound;
+            this.BreakSound = ob.BreakSound;
         }
     }
 }

@@ -2,7 +2,7 @@
 
 namespace VRageRender
 {
-    public class MyRenderMessageUpdateModelProperties : IMyRenderMessage
+    public class MyRenderMessageUpdateModelProperties : MyRenderMessageBase
     {
         public uint ID;
         public int LOD;
@@ -14,8 +14,10 @@ namespace VRageRender
         public float? SpecularPower;
         public float? SpecularIntensity;
         public float? Emissivity;
+        public Color? OutlineColor;
+        public float OutlineThickness;
 
-        MyRenderMessageType IMyRenderMessage.MessageClass { get { return MyRenderMessageType.StateChangeOnce; } }
-        MyRenderMessageEnum IMyRenderMessage.MessageType { get { return MyRenderMessageEnum.UpdateModelProperties; } }
+        public override MyRenderMessageType MessageClass { get { return MyRenderMessageType.StateChangeOnce; } }
+        public override MyRenderMessageEnum MessageType { get { return MyRenderMessageEnum.UpdateModelProperties; } }
     }
 }

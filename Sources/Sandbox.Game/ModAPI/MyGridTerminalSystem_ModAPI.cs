@@ -10,34 +10,6 @@ namespace Sandbox.Game.GameSystems
 {
     partial class MyGridTerminalSystem : IMyGridTerminalSystem
     {
-        List<IMyTerminalBlock> IMyGridTerminalSystem.Blocks
-        {
-            get 
-            {
-                List<IMyTerminalBlock> ret = new List<IMyTerminalBlock>();
-                foreach (var block in m_blocks)
-                {
-                    if (block.IsAccessibleForProgrammableBlock)
-                    {
-                        ret.Add(block);
-                    }
-                }
-                return ret; 
-            }
-        }
-        List<IMyBlockGroup> IMyGridTerminalSystem.BlockGroups
-        {
-            get 
-            {
-                var result = new List<IMyBlockGroup>(BlockGroups.Count);
-                foreach (var group in BlockGroups)
-                {
-                    result.Add(group);
-                }
-                return result;
-            }
-        }
-
         void IMyGridTerminalSystem.GetBlocks(List<IMyTerminalBlock> blocks)
         {
             blocks.Clear();
@@ -98,6 +70,32 @@ namespace Sandbox.Game.GameSystems
                 if (block.CustomName.ToString() == name&& block.IsAccessibleForProgrammableBlock )
                 {
                     return block;
+                }
+            }
+            return null;
+        }
+
+        IMyBlockGroup IMyGridTerminalSystem.GetBlockGroupWithName(string name)
+        {
+            foreach (var group in BlockGroups)
+            {
+                if (group.Name.ToString() == name)
+                {
+                    //Check if every block in group IsAccessibleForProgrammableBlock
+                    var IsAccessibleForProgrammableBlock = true;
+                    foreach (var block in group.Blocks)
+                    {
+                        if (!block.IsAccessibleForProgrammableBlock)
+                        {
+                            IsAccessibleForProgrammableBlock = false;
+                            break;
+                        }
+                    }
+
+                    if (IsAccessibleForProgrammableBlock)
+                    {
+                        return group;
+                    }
                 }
             }
             return null;

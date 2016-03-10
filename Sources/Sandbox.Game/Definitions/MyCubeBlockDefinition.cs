@@ -12,14 +12,17 @@ using System.Linq;
 using VRage.Utils;
 using Sandbox.Game.Entities;
 using Sandbox.Game.AI.Pathfinding;
-using Sandbox.Common.ObjectBuilders.AI;
 using Sandbox.Engine.Utils;
 using VRage;
-using Sandbox.Common.ObjectBuilders.VRageData;
 using Sandbox.Game;
 using VRage.Utils;
 using VRage.Library.Utils;
 using VRage.FileSystem;
+using VRage.Game;
+using VRage.Game.ObjectBuilders.ComponentSystem;
+using VRage.ObjectBuilders;
+using VRage.Game.Components;
+using VRage.Game.Definitions;
 
 namespace Sandbox.Definitions
 {
@@ -98,6 +101,7 @@ namespace Sandbox.Definitions
         {
             public MyComponentDefinition Definition;
             public int Count;
+            public MyPhysicalItemDefinition DeconstructItem;
         }
 
         public class BuildProgressModel
@@ -213,9 +217,14 @@ namespace Sandbox.Definitions
         public bool IsAirTight = false;
 
         /// <summary>
-        /// Building type - always lower case.
+        /// Building type - always lower case (wall, ...).
         /// </summary>
-        public string BuildType;
+        public MyStringId BuildType;
+
+        /// <summary>
+        /// Build material - always lower case (for walls - "stone", "wood"). 
+        /// </summary>
+        public string BuildMaterial;
 
         /// <summary>
         /// Allowed cube block directions.
@@ -235,7 +244,10 @@ namespace Sandbox.Definitions
         /// </summary>
         public float BuildProgressToPlaceGeneratedBlocks;
 
+        public bool CreateFracturedPieces;
+
         public string[] CompoundTemplates;
+        public bool CompoundEnabled;
 
         public string MultiBlock;
 
@@ -289,9 +301,15 @@ namespace Sandbox.Definitions
         private string m_mirroringBlock;
 
         public MySoundPair PrimarySound;
+        public MySoundPair ActionSound;
+        public MySoundPair DamagedSound;
 
         public int Points;
 
+        // This defines, which components should be created when the block is first built
+        // CH: TODO: This should be something like entity component definition list and the components should
+        // be able to construct themselves from the definitions
+        public Dictionary<string, MyObjectBuilder_ComponentBase> EntityComponents = null;
 
         public override String DisplayNameText
         {
@@ -343,13 +361,21 @@ namespace Sandbox.Definitions
             this.Direction             = ob.Direction;
             this.Mirrored              = ob.Mirrored;
             this.RandomRotation        = ob.RandomRotation;
-            this.BuildType             = ob.BuildType != null ? ob.BuildType.ToLower() : null;
+            this.BuildType             = MyStringId.GetOrCompute(ob.BuildType != null ? ob.BuildType.ToLower() : null);
+            this.BuildMaterial         = ob.BuildMaterial != null ? ob.BuildMaterial.ToLower() : null;
             this.BuildProgressToPlaceGeneratedBlocks = ob.BuildProgressToPlaceGeneratedBlocks;
             this.GeneratedBlockType    = MyStringId.GetOrCompute(ob.GeneratedBlockType != null ? ob.GeneratedBlockType.ToLower() : null);
+            this.CompoundEnabled       = ob.CompoundEnabled;
+            this.CreateFracturedPieces = ob.CreateFracturedPieces;
+            if (ob.PhysicalMaterial != null)
+            {
+                this.PhysicalMaterial = MyDefinitionManager.Static.GetPhysicalMaterialDefinition(ob.PhysicalMaterial);
+            }
             if (ob.DamageEffectId != 0)
                 this.DamageEffectID = ob.DamageEffectId;
 
             this.Points = ob.Points;
+            InitEntityComponents(ob.EntityComponents);
 
             this.CompoundTemplates = ob.CompoundTemplates;
             Debug.Assert(this.CompoundTemplates == null || this.CompoundTemplates.Length > 0, "Wrong compound templates, array is empty");
@@ -417,10 +443,19 @@ namespace Sandbox.Definitions
                 {
                     var component = components[j];
 
+                    var definition = MyDefinitionManager.Static.GetComponentDefinition(new MyDefinitionId(component.Type, component.Subtype));
+                    MyPhysicalItemDefinition deconstructDefinition = null;
+                    if (!component.DeconstructId.IsNull() && !MyDefinitionManager.Static.TryGetPhysicalItemDefinition(component.DeconstructId, out deconstructDefinition))
+                        deconstructDefinition = definition;
+
+                    if (deconstructDefinition == null)
+                        deconstructDefinition = definition;
+
                     MyCubeBlockDefinition.Component tmp = new MyCubeBlockDefinition.Component()
                     {
+                        Definition = definition,
                         Count = component.Count,
-                        Definition = MyDefinitionManager.Static.GetComponentDefinition(new MyDefinitionId(component.Type, component.Subtype))
+                        DeconstructItem = deconstructDefinition,
                     };
 
                     if (component.Type == typeof(MyObjectBuilder_Component) && component.Subtype == "Computer")
@@ -521,7 +556,10 @@ namespace Sandbox.Definitions
             CheckBuildProgressModels();
             // Components and CriticalComponent will be initialized elsewhere
 
-            this.PrimarySound = new MySoundPair(ob.PrimarySound);
+            PrimarySound = new MySoundPair(ob.PrimarySound);
+            ActionSound = new MySoundPair(ob.ActionSound);
+            if (ob.DamagedSound!=null)
+                DamagedSound = new MySoundPair(ob.DamagedSound);
         }
 
         public override MyObjectBuilder_DefinitionBase GetObjectBuilder()
@@ -549,7 +587,8 @@ namespace Sandbox.Definitions
             ob.Rotation = this.Rotation;
             ob.Direction = this.Direction;
             ob.Mirrored = this.Mirrored;
-            ob.BuildType = this.BuildType;
+            ob.BuildType = this.BuildType.ToString();
+            ob.BuildMaterial = this.BuildMaterial;
             ob.GeneratedBlockType = this.GeneratedBlockType.ToString();
             ob.DamageEffectId = this.DamageEffectID.HasValue ? this.DamageEffectID.Value : 0;
             ob.CompoundTemplates = this.CompoundTemplates;
@@ -557,7 +596,11 @@ namespace Sandbox.Definitions
             ob.Points = this.Points;
             //ob.SubBlockDefinitions = SubBlockDefinitions;
             //ob.BlockVariants = BlockVariants;
-
+            if (this.PhysicalMaterial != null)
+            {
+                ob.PhysicalMaterial = this.PhysicalMaterial.Id.SubtypeName;
+            }
+            ob.CompoundEnabled = this.CompoundEnabled;
             
             if (Components != null)
             {
@@ -602,7 +645,7 @@ namespace Sandbox.Definitions
             return ratio >= OwnershipIntegrityRatio;
         }
 
-        public bool RationEnoughForDamageEffect(float ratio)
+        public bool RatioEnoughForDamageEffect(float ratio)
         {
             return ratio < CriticalIntegrityRatio;//tied to red line
         }
@@ -751,7 +794,7 @@ namespace Sandbox.Definitions
                 {
                     def.MountPoints = null;
                     string msg = "Obsolete default definition of mount points in " + def.Id;
-                    MyDefinitionErrors.Add(Context, msg, ErrorSeverity.Warning);
+                    MyDefinitionErrors.Add(Context, msg, TErrorSeverity.Warning);
                 }
             }
 
@@ -968,6 +1011,30 @@ namespace Sandbox.Definitions
 
                 if (NavigationDefinition != null && NavigationDefinition.Mesh != null)
                     NavigationDefinition.Mesh.MakeStatic();
+            }
+        }
+
+        private void InitEntityComponents(MyObjectBuilder_CubeBlockDefinition.EntityComponentDefinition[] entityComponentDefinitions)
+        {
+            if (entityComponentDefinitions == null) return;
+
+            EntityComponents = new Dictionary<string, MyObjectBuilder_ComponentBase>(entityComponentDefinitions.Length);
+            for (int i = 0; i < entityComponentDefinitions.Length; ++i)
+            {
+                var definition = entityComponentDefinitions[i];
+
+                MyObjectBuilderType componentObType = MyObjectBuilderType.Parse(definition.BuilderType);
+                Debug.Assert(!componentObType.IsNull, "Could not parse object builder type of component: " + definition.BuilderType);
+
+                if (!componentObType.IsNull)
+                {
+                    var componentBuilder = MyObjectBuilderSerializer.CreateNewObject(componentObType) as MyObjectBuilder_ComponentBase;
+                    Debug.Assert(componentBuilder != null, "Could not create object builder of type " + componentObType);
+                    if (componentBuilder != null)
+                    {
+                        EntityComponents.Add(definition.ComponentType, componentBuilder);
+                    }
+                }
             }
         }
 

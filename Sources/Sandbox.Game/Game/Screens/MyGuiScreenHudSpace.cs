@@ -10,6 +10,7 @@ using Sandbox.Game.GameSystems;
 using Sandbox.Game.GUI.HudViewers;
 using Sandbox.Game.Localization;
 using Sandbox.Game.Screens.Helpers;
+using Sandbox.Game.Screens;
 using Sandbox.Game.World;
 using Sandbox.Graphics;
 using Sandbox.Graphics.GUI;
@@ -17,7 +18,9 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 using VRage;
-using VRage;
+using VRage.Game;
+using VRage.Game.Entity;
+using VRage.Game.Gui;
 using VRage.Input;
 using VRage.Utils;
 using VRage.Voxels;
@@ -32,6 +35,8 @@ namespace Sandbox.Game.Gui
 {
     class MyGuiScreenHudSpace : MyGuiScreenHudBase
     {
+        public static MyGuiScreenHudSpace Static;
+
         private MyGuiControlToolbar m_toolbarControl;
         private MyGuiControlBlockInfo m_blockInfo;
         private MyGuiControlRotatingWheel m_rotatingWheelControl;
@@ -53,7 +58,12 @@ namespace Sandbox.Game.Gui
 
         private MyGuiControlLabel m_noMsgSentNotification;
         private MyGuiControlLabel m_noConnectionNotification;
+        private MyGuiControlLabel m_serverSavingNotification;
         private MyGuiControlLabel m_relayNotification;
+
+        private bool m_hiddenToolbar;
+
+		public float m_gravityHudWidth;
 
         public MyGuiScreenHudSpace()
             : base()
@@ -72,6 +82,8 @@ namespace Sandbox.Game.Gui
                 IconColor = MyHudConstants.GPS_COLOR,
                 OffsetText = true
             };
+
+            Static = this;
         }
 
         public override void RecreateControls(bool constructor)
@@ -93,7 +105,7 @@ namespace Sandbox.Game.Gui
 				ComponentsLabelFont = MyFontEnum.Blue,
 				InstalledRequiredLabelText = MySpaceTexts.HudBlockInfo_Installed_Required,
 				InstalledRequiredLabelFont = MyFontEnum.Blue,
-				RequiredLabelText = MySpaceTexts.HudBlockInfo_Required,
+                RequiredLabelText = MyCommonTexts.HudBlockInfo_Required,
 				IntegrityLabelFont = MyFontEnum.White,
 				IntegrityBackgroundColor = new Vector4(78 / 255.0f, 116 / 255.0f, 137 / 255.0f, 1.0f),
 				IntegrityForegroundColor = new Vector4(0.5f, 0.1f, 0.1f, 1),
@@ -138,22 +150,28 @@ namespace Sandbox.Game.Gui
                 position: buildModePosition,
                 originAlign: MyGuiDrawAlignEnum.HORISONTAL_LEFT_AND_VERTICAL_TOP,
                 font: MyFontEnum.White,
-                text: MyTexts.GetString(MySpaceTexts.Hud_BuildMode));
+                text: MyTexts.GetString(MyCommonTexts.Hud_BuildMode));
             Controls.Add(m_buildModeLabel);
 
             m_relayNotification = new MyGuiControlLabel(new Vector2(1, 0), font: MyFontEnum.White, originAlign: MyGuiDrawAlignEnum.HORISONTAL_RIGHT_AND_VERTICAL_TOP);
-            m_relayNotification.TextEnum = MySpaceTexts.Multiplayer_IndirectConnection;
+            m_relayNotification.TextEnum = MyCommonTexts.Multiplayer_IndirectConnection;
             m_relayNotification.Visible = false;
             Controls.Add(m_relayNotification);
             var offset = new Vector2(0, m_relayNotification.Size.Y);
-            m_noMsgSentNotification = new MyGuiControlLabel(new Vector2(1, 0) + offset,font: MyFontEnum.Debug, text: MyTexts.GetString(MySpaceTexts.Multiplayer_LastMsg), originAlign: MyGuiDrawAlignEnum.HORISONTAL_RIGHT_AND_VERTICAL_TOP);
+            m_noMsgSentNotification = new MyGuiControlLabel(new Vector2(1, 0) + offset, font: MyFontEnum.Debug, text: MyTexts.GetString(MyCommonTexts.Multiplayer_LastMsg), originAlign: MyGuiDrawAlignEnum.HORISONTAL_RIGHT_AND_VERTICAL_TOP);
             m_noMsgSentNotification.Visible = false;
             Controls.Add(m_noMsgSentNotification);
             offset += new Vector2(0, m_noMsgSentNotification.Size.Y);
             m_noConnectionNotification = new MyGuiControlLabel(new Vector2(1, 0) + offset, font: MyFontEnum.Red , originAlign: MyGuiDrawAlignEnum.HORISONTAL_RIGHT_AND_VERTICAL_TOP);
-            m_noConnectionNotification.TextEnum = MySpaceTexts.Multiplayer_NoConnection;
+            m_noConnectionNotification.TextEnum = MyCommonTexts.Multiplayer_NoConnection;
             m_noConnectionNotification.Visible = false;
             Controls.Add(m_noConnectionNotification);
+
+            m_serverSavingNotification = new MyGuiControlLabel(new Vector2(1, 0) + offset, font: MyFontEnum.White, originAlign: MyGuiDrawAlignEnum.HORISONTAL_RIGHT_AND_VERTICAL_TOP);
+            m_serverSavingNotification.TextEnum = MyCommonTexts.SavingPleaseWait;
+            m_serverSavingNotification.Visible = false;
+            Controls.Add(m_serverSavingNotification);
+
             MyHud.ReloadTexts();
         }
 
@@ -167,9 +185,10 @@ namespace Sandbox.Game.Gui
                 MyHud.ObjectiveLine.AdvanceObjective();
             }
 
-            m_toolbarControl.Visible = !MyHud.MinimalHud;
+            m_toolbarControl.Visible = !(m_hiddenToolbar || MyHud.MinimalHud);
             
-            Vector2 position = new Vector2(0.99f, 0.8f);
+            Vector2 position = new Vector2(0.99f, 0.75f);
+            if (MySession.Static.ControlledEntity is MyShipController) position.Y = 0.65f;
             position = ConvertHudToNormalizedGuiPosition(ref position);
             if (MyVideoSettingsManager.IsTripleHead())
                 position.X += 1.0f;
@@ -182,12 +201,14 @@ namespace Sandbox.Game.Gui
 
             m_rotatingWheelControl.Visible = MyHud.RotatingWheelVisible && !MyHud.MinimalHud;
 
+            m_chatControl.Visible = !(MyScreenManager.GetScreenWithFocus() is MyGuiScreenScenarioMpBase);
+
             if (!base.Draw())
                 return false;
 
             var bgPos = new Vector2(0.01f, 0.85f);
             bgPos = MyGuiScreenHudBase.ConvertHudToNormalizedGuiPosition(ref bgPos);
-            m_chatControl.Position = bgPos + new Vector2(0.15f, 0);
+            m_chatControl.Position = bgPos + new Vector2(0.17f, 0);
             m_chatControl.TextScale = 0.9f;
 
             bgPos = new Vector2(0.03f, 0.1f);
@@ -195,62 +216,78 @@ namespace Sandbox.Game.Gui
             m_cameraInfoMultilineControl.Position = bgPos;
             m_cameraInfoMultilineControl.TextScale = 0.9f;
 
-            if (MyHud.Crosshair.Visible && MySandboxGame.Config.ShowCrosshair)
-            {
-                DrawCrosshair(m_atlas, GetTextureCoord(MyHud.Crosshair.TextureEnum), MyHud.Crosshair);
-            }
+			bool inNaturalGravity = false;
+			var cockpit = MySession.Static.ControlledEntity  as MyCockpit;
+			if (cockpit != null)
+			{
+				var characterPosition = cockpit.PositionComp.GetPosition();
+				inNaturalGravity = MyGravityProviderSystem.CalculateHighestNaturalGravityMultiplierInPoint(characterPosition) != 0;
+			}
+
+			if (!MyHud.MinimalHud && inNaturalGravity)
+				DrawArtificialHorizonAndAltitude();
 
             MyHud.Notifications.Draw();
 
-            m_buildModeLabel.Visible = !MyHud.MinimalHud && MyHud.IsBuildMode;
+            if (!MyHud.MinimalHud)
+            {
+                m_buildModeLabel.Visible = MyHud.IsBuildMode;
 
-            if (MyHud.ShipInfo.Visible && !MyHud.MinimalHud)
-                DrawShipInfo(MyHud.ShipInfo);
+                if (MyHud.ShipInfo.Visible)
+                    DrawShipInfo(MyHud.ShipInfo);
 
-            if (MyHud.CharacterInfo.Visible && !MyHud.MinimalHud)
-                DrawSuitInfo(MyHud.CharacterInfo);
+                if (MyHud.CharacterInfo.Visible)
+                    DrawSuitInfo(MyHud.CharacterInfo);
 
-            if (MyHud.ObjectiveLine.Visible && !MyHud.MinimalHud && MyFakes.ENABLE_OBJECTIVE_LINE)
-                DrawObjectiveLine(MyHud.ObjectiveLine);
+                if (MyHud.ObjectiveLine.Visible && MyFakes.ENABLE_OBJECTIVE_LINE)
+                    DrawObjectiveLine(MyHud.ObjectiveLine);
+            }
+            else
+                m_buildModeLabel.Visible = false;
 
             MyHud.BlockInfo.Visible = false;
             m_blockInfo.BlockInfo = null;
 
-            if (MyHud.GravityIndicator.Visible && !MyHud.MinimalHud)
-                DrawGravityIndicator(MyHud.GravityIndicator, MyHud.CharacterInfo);
-
-            if (MyHud.ConsumerGroupInfo.Visible && !MyHud.MinimalHud)
-                DrawPowerGroupInfo(MyHud.ConsumerGroupInfo);
-
-            if (MyHud.SelectedObjectHighlight.Visible && MyFakes.ENABLE_USE_OBJECT_HIGHLIGHT)
-                DrawSelectedObjectHighlight(m_atlas, GetTextureCoord(MyHudTexturesEnum.corner), MyHud.SelectedObjectHighlight);
-
-            if (MyHud.LocationMarkers.Visible && !MyHud.MinimalHud)
-                m_markerRender.DrawLocationMarkers(MyHud.LocationMarkers);
-
-            if (MyHud.GpsMarkers.Visible && !MyHud.MinimalHud && MyFakes.ENABLE_GPS)
-                DrawGpsMarkers(MyHud.GpsMarkers);
-
-            if (MyHud.ButtonPanelMarkers.Visible && !MyHud.MinimalHud)
-                DrawButtonPanelMarkers(MyHud.ButtonPanelMarkers);
-
-            if (MyHud.OreMarkers.Visible && !MyHud.MinimalHud)
-                DrawOreMarkers(MyHud.OreMarkers);
-
-            if (MyHud.LargeTurretTargets.Visible && !MyHud.MinimalHud)
-                DrawLargeTurretTargets(MyHud.LargeTurretTargets);
+            if (MyFakes.ENABLE_USE_OBJECT_HIGHLIGHT)
+            {
+                MyHudObjectHighlightStyleData data = new MyHudObjectHighlightStyleData();
+                data.AtlasTexture = m_atlas;
+                data.TextureCoord = GetTextureCoord(MyHudTexturesEnum.corner);
+                MyGuiScreenHudBase.HandleSelectedObjectHighlight(MyHud.SelectedObjectHighlight, data);
+            }
 
             if (!MyHud.MinimalHud)
-                DrawWorldBorderIndicator(MyHud.WorldBorderChecker);
+            {
+                if (MyHud.GravityIndicator.Visible)
+                    DrawGravityIndicator(MyHud.GravityIndicator, MyHud.CharacterInfo);
 
-            if (MyHud.HackingMarkers.Visible && !MyHud.MinimalHud)
-                DrawHackingMarkers(MyHud.HackingMarkers);
+                if (MyHud.SinkGroupInfo.Visible )
+                    DrawPowerGroupInfo(MyHud.SinkGroupInfo);
 
-            //m_chatControl.Visible = !MyHud.MinimalHud;
+                if (MyHud.LocationMarkers.Visible)
+                    m_markerRender.DrawLocationMarkers(MyHud.LocationMarkers);
 
-            if (!MyHud.MinimalHud)
-                DrawCameraInfo(MyHud.CameraInfo);
+                if (MyHud.GpsMarkers.Visible && MyFakes.ENABLE_GPS)
+                    DrawGpsMarkers(MyHud.GpsMarkers);
 
+                if (MyHud.ButtonPanelMarkers.Visible)
+                    DrawButtonPanelMarkers(MyHud.ButtonPanelMarkers);
+
+                if (MyHud.OreMarkers.Visible)
+                    DrawOreMarkers(MyHud.OreMarkers);
+
+                if (MyHud.LargeTurretTargets.Visible)
+                    DrawLargeTurretTargets(MyHud.LargeTurretTargets);
+
+                    DrawWorldBorderIndicator(MyHud.WorldBorderChecker);
+
+                if (MyHud.HackingMarkers.Visible)
+                    DrawHackingMarkers(MyHud.HackingMarkers);
+
+                //m_chatControl.Visible = !MyHud.MinimalHud;
+
+                    DrawCameraInfo(MyHud.CameraInfo);
+            }
             ProfilerShort.Begin("Draw netgraph");
             if (MyFakes.ENABLE_NETGRAPH && MyHud.IsNetgraphVisible)
                 DrawNetgraph(MyHud.Netgraph);
@@ -258,12 +295,14 @@ namespace Sandbox.Game.Gui
             //if (Sync.MultiplayerActive)
             DrawMultiplayerNotifications();
 
-            if (!MyHud.MinimalHud && MyHud.VoiceChat.Visible)
-                DrawVoiceChat(MyHud.VoiceChat);
+            if (!MyHud.MinimalHud)
+            {
+                if (MyHud.VoiceChat.Visible)
+                    DrawVoiceChat(MyHud.VoiceChat);
 
-            if (MyHud.ScenarioInfo.Visible && !MyHud.MinimalHud)
-                DrawScenarioInfo(MyHud.ScenarioInfo);
-
+                if (MyHud.ScenarioInfo.Visible)
+                    DrawScenarioInfo(MyHud.ScenarioInfo);
+            }
             return true;
         }
 
@@ -281,12 +320,27 @@ namespace Sandbox.Game.Gui
             }
             else
                 m_noMsgSentNotification.Visible = false;
+
             if (!MySession.Static.MultiplayerAlive)
             {
-                m_noConnectionNotification.Visible = true;
+                m_noConnectionNotification.Visible = true && (MySession.Static.ServerSaving == false);
             }
             else
+            {
                 m_noConnectionNotification.Visible = false;
+            }
+
+            if (MySession.Static.ServerSaving)
+            {
+                m_serverSavingNotification.Visible = true;
+            }
+            else
+            {
+                m_serverSavingNotification.Visible = false;
+            }
+
+
+
             if (!MySession.Static.MultiplayerDirect)
             {
                 m_relayNotification.Visible = true;
@@ -295,66 +349,123 @@ namespace Sandbox.Game.Gui
                 m_relayNotification.Visible = false;
         }
 
+        public void SetToolbarVisible(bool visible)
+        {
+            m_toolbarControl.Visible = visible;
+            m_hiddenToolbar = !visible;
+        }
+
         private void DrawGravityIndicator(MyHudGravityIndicator indicator, MyHudCharacterInfo characterInfo)
         {
             if (indicator.Entity == null)
                 return;
 
-            Vector3 gravity = MyGravityProviderSystem.CalculateGravityInPoint(MySession.GetCameraControllerEnum() == MyCameraControllerEnum.Entity || MySession.GetCameraControllerEnum() == MyCameraControllerEnum.ThirdPersonSpectator ? indicator.Entity.PositionComp.WorldAABB.Center : MySpectatorCameraController.Static.Position);
+			Vector3D worldPosition = MySession.Static.GetCameraControllerEnum() == MyCameraControllerEnum.Entity || MySession.Static.GetCameraControllerEnum() == MyCameraControllerEnum.ThirdPersonSpectator ? indicator.Entity.PositionComp.WorldAABB.Center : MySpectatorCameraController.Static.Position;
+			Vector3 totalGravity = MyGravityProviderSystem.CalculateTotalGravityInPoint(worldPosition);
+			Vector3 naturalGravity = MyGravityProviderSystem.CalculateNaturalGravityInPoint(worldPosition);
+			Vector3 artificialGravity = totalGravity - naturalGravity;
             //gravity += MyPhysics.HavokWorld.Gravity;
-            bool anyGravity = !MyUtils.IsZero(gravity.Length());
+            bool anyGravity = !Vector3.IsZero(totalGravity);
+			bool anyNaturalGravity = anyGravity && !Vector3.IsZero(naturalGravity);
 
             // Background and text drawing
-            MyFontEnum font;
-            StringBuilder text;
-            m_hudIndicatorText.Clear();
-            m_hudIndicatorText.AppendFormatedDecimal("", gravity.Length() / 9.81f, 1, " g");
-            MyGuiPaddedTexture bg;
+            MyFontEnum totalGravityFont, artificialGravityFont = MyFontEnum.Blue, naturalGravityFont = MyFontEnum.Blue;
+            StringBuilder totalGravityText, artificialGravityText = null, naturalGravityText = null;
+            MyGuiPaddedTexture backgroundTexture;
             if (anyGravity)
             {
-                font = MyFontEnum.Blue;
-                text = MyTexts.Get(MySpaceTexts.HudInfoGravity);
-                bg = MyGuiConstants.TEXTURE_HUD_BG_MEDIUM_DEFAULT;
+				totalGravityFont = MyFontEnum.Blue;
+				totalGravityText = MyTexts.Get(MySpaceTexts.HudInfoGravity);
+				if (!anyNaturalGravity)
+					artificialGravityFont = MyFontEnum.White;
+				artificialGravityText = MyTexts.Get(MySpaceTexts.HudInfoGravityArtificial);
+				backgroundTexture = MyGuiConstants.TEXTURE_HUD_BG_MEDIUM_DEFAULT;
             }
             else
             {
-                font = MyFontEnum.Red;
-                text = MyTexts.Get(MySpaceTexts.HudInfoNoGravity);
-                bg = MyGuiConstants.TEXTURE_HUD_BG_MEDIUM_RED;
+				totalGravityFont = MyFontEnum.Red;
+				totalGravityText = MyTexts.Get(MySpaceTexts.HudInfoNoGravity);
+				backgroundTexture = MyGuiConstants.TEXTURE_HUD_BG_MEDIUM_RED;
             }
+
+			if(anyNaturalGravity)
+			{
+				naturalGravityText = MyTexts.Get(MySpaceTexts.HudInfoGravityNatural);
+				if (naturalGravity.Length() > artificialGravity.Length())
+				{
+					artificialGravityFont = MyFontEnum.Blue;
+					naturalGravityFont = MyFontEnum.White;
+				}
+				else
+				{
+					artificialGravityFont = MyFontEnum.White;
+					naturalGravityFont = MyFontEnum.Blue;
+				}
+			}
 
             bool drawOxygen = MySession.Static.Settings.EnableOxygen;
-            Vector2 bgSizeDelta = new Vector2(0.015f, 0f);
+            Vector2 bgSizeDelta = new Vector2(0.015f + 0.02f, 0.05f);
             float oxygenLevel = 0f;
 
-            Vector2 bgSize = bg.SizeGui + bgSizeDelta;
+            Vector2 oxygenCompensation = Vector2.Zero;
+            if (drawOxygen && anyNaturalGravity) oxygenCompensation = new Vector2(0f, 0.025f);
+            Vector2 backgroundSize = backgroundTexture.SizeGui + bgSizeDelta + oxygenCompensation;
 
-            Vector2 bgPos, textPos, gTextPos, position;
-            MyGuiDrawAlignEnum align;
+            Vector2 backgroundPosition, vectorPosition;
+			Vector2 totalGravityTextPos, artificialGravityTextPos, naturalGravityTextPos;
+			Vector2 totalGravityNumberPos, artificialGravityNumberPos, naturalGravityNumberPos;
+			Vector2 dividerLinePosition, dividerLineSize;
+            MyGuiDrawAlignEnum backgroundAlignment, gravityTextAlignment = MyGuiDrawAlignEnum.HORISONTAL_RIGHT_AND_VERTICAL_TOP, gravityNumberAlignment = MyGuiDrawAlignEnum.HORISONTAL_LEFT_AND_VERTICAL_TOP;
+
+			dividerLineSize = new Vector2(backgroundSize.X - backgroundTexture.PaddingSizeGui.X * 1f, backgroundSize.Y / 60f);
+
             if (indicator.Entity is MyCharacter)
-            {
-                bgPos = new Vector2(0.99f, 0.99f);
-                bgPos = ConvertHudToNormalizedGuiPosition(ref bgPos);
-                textPos = bgPos - bgSize * new Vector2(0.94f, 0.98f) + bg.PaddingSizeGui * Vector2.UnitY * 0.2f;
-                gTextPos = bgPos - bgSize * new Vector2(0.56f, 0.98f) + bg.PaddingSizeGui * Vector2.UnitY * 0.2f;
-                align = MyGuiDrawAlignEnum.HORISONTAL_RIGHT_AND_VERTICAL_BOTTOM;
-                position = bgPos - bgSize * new Vector2(0.5f, 0.5f) + bg.PaddingSizeGui * Vector2.UnitY * 0.5f;
+			{
+				backgroundAlignment = MyGuiDrawAlignEnum.HORISONTAL_RIGHT_AND_VERTICAL_BOTTOM;
+				backgroundPosition = new Vector2(0.99f, 0.99f);
+				backgroundPosition = ConvertHudToNormalizedGuiPosition(ref backgroundPosition);
 
-                oxygenLevel = (indicator.Entity as MyCharacter).EnvironmentOxygenLevel;
-            }
+				totalGravityTextPos = backgroundPosition - backgroundSize * new Vector2(0.35f, 1.075f);
+				totalGravityNumberPos = totalGravityTextPos + new Vector2(0.0075f, 0.002f);
+				dividerLinePosition = new Vector2(backgroundPosition.X - backgroundSize.X + backgroundTexture.PaddingSizeGui.X/2.0f, totalGravityTextPos.Y) + new Vector2(0.0f, 0.026f);
+				
+
+				{
+					artificialGravityTextPos = new Vector2(totalGravityTextPos.X, dividerLinePosition.Y) + new Vector2(0.0f, 0.005f);
+					artificialGravityNumberPos = new Vector2(totalGravityNumberPos.X, artificialGravityTextPos.Y);
+					naturalGravityTextPos = artificialGravityTextPos + new Vector2(0.0f, 0.025f);
+					naturalGravityNumberPos = artificialGravityNumberPos + new Vector2(0.0f, 0.025f);
+				}
+
+				vectorPosition = backgroundPosition - backgroundSize * new Vector2(0.5f, 0.5f - 0.05f) + backgroundTexture.PaddingSizeGui * Vector2.UnitY * 0.5f;
+
+                oxygenLevel = (indicator.Entity as MyCharacter).OxygenComponent != null ? (indicator.Entity as MyCharacter).OxygenComponent.EnvironmentOxygenLevel : 0f;
+			}
             else
             {
-                bgPos = new Vector2(0.01f, 1f - (characterInfo.Data.GetGuiHeight() + 0.02f));
-                bgPos = ConvertHudToNormalizedGuiPosition(ref bgPos);
-                textPos = bgPos + bgSize * new Vector2(1 - 0.94f, -0.98f) + bg.PaddingSizeGui * Vector2.UnitY * 0.2f;
-                gTextPos = bgPos + bgSize * new Vector2(1 - 0.56f, -0.98f) + bg.PaddingSizeGui * Vector2.UnitY * 0.2f;
-                align = MyGuiDrawAlignEnum.HORISONTAL_LEFT_AND_VERTICAL_BOTTOM;
-                position = bgPos - bgSize * new Vector2(-0.5f, 0.5f) + bg.PaddingSizeGui * Vector2.UnitY * 0.5f;
+				backgroundAlignment = MyGuiDrawAlignEnum.HORISONTAL_LEFT_AND_VERTICAL_BOTTOM;
+				backgroundPosition = new Vector2(0.01f, 1f - (characterInfo.Data.GetGuiHeight() + 0.02f));
+				backgroundPosition = ConvertHudToNormalizedGuiPosition(ref backgroundPosition);
+
+				gravityTextAlignment = MyGuiDrawAlignEnum.HORISONTAL_RIGHT_AND_VERTICAL_BOTTOM;
+				gravityNumberAlignment = MyGuiDrawAlignEnum.HORISONTAL_LEFT_AND_VERTICAL_BOTTOM;
+				totalGravityTextPos = backgroundPosition + backgroundSize * new Vector2(1 - 0.35f, -0.99f) + backgroundTexture.PaddingSizeGui * Vector2.UnitY * 0.2f;
+				totalGravityNumberPos = totalGravityNumberPos = totalGravityTextPos + new Vector2(0.0075f, 0.0025f);
+				dividerLinePosition = new Vector2(backgroundPosition.X + backgroundTexture.PaddingSizeGui.X/2.0f, totalGravityTextPos.Y - 0.022f) + new Vector2(0.0f, 0.026f);
+
+				{
+					artificialGravityTextPos = new Vector2(totalGravityTextPos.X, dividerLinePosition.Y + 0.023f) + new Vector2(0.0f, 0.005f);
+					artificialGravityNumberPos = new Vector2(totalGravityNumberPos.X, artificialGravityTextPos.Y);
+					naturalGravityTextPos = artificialGravityTextPos + new Vector2(0.0f, 0.025f);
+					naturalGravityNumberPos = artificialGravityNumberPos + new Vector2(0.0f, 0.025f);
+				}
+
+				vectorPosition = backgroundPosition - backgroundSize * new Vector2(-0.5f, 0.5f - 0.05f) + backgroundTexture.PaddingSizeGui * Vector2.UnitY * 0.5f;
 
                 var cockpit = indicator.Entity as MyCockpit;
-                if (cockpit != null && cockpit.Pilot != null)
+                if (cockpit != null && cockpit.Pilot != null && cockpit.Pilot.OxygenComponent != null)
                 {
-                    oxygenLevel = cockpit.Pilot.EnvironmentOxygenLevel;
+                    oxygenLevel = cockpit.Pilot.OxygenComponent.EnvironmentOxygenLevel;
                 }
                 else
                 {
@@ -362,19 +473,31 @@ namespace Sandbox.Game.Gui
                 }
             }
 
+			m_gravityHudWidth = backgroundSize.X;
+			MyGuiManager.DrawSpriteBatch(backgroundTexture.Texture, backgroundPosition, backgroundSize + (true ? new Vector2(0f, 0.025f) : Vector2.Zero), Color.White, backgroundAlignment);
+            var controlledEntity = MySession.Static.ControlledEntity as MyEntity;
+            var scale = 0.85f;
+			if (anyNaturalGravity && controlledEntity != null)
+			{
+				double cosRotation = Vector3D.Normalize(Vector3D.Reject(naturalGravity, controlledEntity.WorldMatrix.Forward)).Dot(Vector3D.Normalize(-controlledEntity.WorldMatrix.Up));
+				float rotation = 0.0f;
+				rotation = (float)Math.Acos(cosRotation);
+
+				if (naturalGravity.Dot(controlledEntity.WorldMatrix.Right) >= 0)
+					rotation = 2.0f * (float)Math.PI - rotation;
+
+                MyGuiManager.DrawSpriteBatch(MyGuiConstants.TEXTURE_HUD_GRAVITY_GLOBE.Texture, vectorPosition + new Vector2(0.045f, 0.065f) * scale + oxygenCompensation / 2, scale, Color.White, MyGuiDrawAlignEnum.HORISONTAL_CENTER_AND_VERTICAL_CENTER, rotation, new Vector2(0.5f));
+			}
+			MyGuiManager.DrawString(totalGravityFont, totalGravityText, totalGravityTextPos, m_textScale, drawAlign: gravityTextAlignment);
+
+			if(anyGravity)
+				MyGuiManager.DrawSpriteBatch(MyGuiConstants.TEXTURE_HUD_GRAVITY_LINE.Texture, dividerLinePosition, dividerLineSize, Color.White, MyGuiDrawAlignEnum.HORISONTAL_LEFT_AND_VERTICAL_CENTER);
+
             if (drawOxygen)
             {
-                bgSizeDelta += new Vector2(0f, 0.025f);
-            }
-
-            MyGuiManager.DrawSpriteBatch(bg.Texture, bgPos, bg.SizeGui + bgSizeDelta, Color.White, align);
-
-            MyGuiManager.DrawString(font, text, textPos, m_textScale);
-
-            if (drawOxygen)
-            {
+                Vector2 oxygenTextPos = artificialGravityTextPos + new Vector2(0.0f, 0.025f) + oxygenCompensation.Y;
                 var oxygenFont = MyFontEnum.Blue;
-                var oxygenText = new StringBuilder("Oxygen: ");
+                var oxygenText = new StringBuilder(MyTexts.Get(MySpaceTexts.HudInfoOxygen).ToString());
                 if (oxygenLevel == 0f)
                 {
                     oxygenText.Append("None");
@@ -389,26 +512,38 @@ namespace Sandbox.Game.Gui
                 {
                     oxygenText.Append("High");
                 }
-                
-                MyGuiManager.DrawString(oxygenFont, oxygenText, textPos - new Vector2(0f, 0.025f), m_textScale);
+
+                MyGuiManager.DrawString(oxygenFont, oxygenText, oxygenTextPos, m_textScale, drawAlign: gravityTextAlignment);
             }
 
-            if (anyGravity)
-                MyGuiManager.DrawString(MyFontEnum.White, m_hudIndicatorText, gTextPos, m_textScale);
+			if (anyGravity)
+			{
+				m_hudIndicatorText.Clear();
+				m_hudIndicatorText.AppendFormatedDecimal("", totalGravity.Length() / MyGravityProviderSystem.G, 2, " g");
+				MyGuiManager.DrawString(totalGravityFont, m_hudIndicatorText, totalGravityNumberPos, m_textScale, drawAlign: gravityNumberAlignment);
+				m_hudIndicatorText.Clear();
+				m_hudIndicatorText.AppendFormatedDecimal("", artificialGravity.Length() / MyGravityProviderSystem.G, 2, " g");
+				MyGuiManager.DrawString(artificialGravityFont, artificialGravityText, artificialGravityTextPos, m_textScale, drawAlign: gravityTextAlignment);
+				MyGuiManager.DrawString(artificialGravityFont, m_hudIndicatorText, artificialGravityNumberPos, m_textScale, drawAlign: gravityNumberAlignment);
+				if (anyNaturalGravity)
+				{
+					m_hudIndicatorText.Clear();
+					m_hudIndicatorText.AppendFormatedDecimal("", naturalGravity.Length() / MyGravityProviderSystem.G, 2, " g");
+					MyGuiManager.DrawString(naturalGravityFont, naturalGravityText, naturalGravityTextPos, m_textScale, drawAlign: gravityTextAlignment);
+					MyGuiManager.DrawString(naturalGravityFont, m_hudIndicatorText, naturalGravityNumberPos, m_textScale, drawAlign: gravityNumberAlignment);
+				}
+			}
 
-            position = MyGuiManager.GetHudSize() * ConvertNormalizedGuiToHud(ref position);
-            if (MyVideoSettingsManager.IsTripleHead())
-                position.X += 1.0f;
+            vectorPosition = MyGuiManager.GetHudSize() * ConvertNormalizedGuiToHud(ref vectorPosition) + (oxygenCompensation / 2) * scale;
+			if (MyVideoSettingsManager.IsTripleHead())
+				vectorPosition.X += 1.0f;
 
             // Draw each of gravity indicators.
             foreach (var generatorGravity in MyGravityProviderSystem.GravityVectors)
-                DrawGravityVectorIndicator(position, generatorGravity, MyHudTexturesEnum.gravity_arrow, Color.Gray);
-
-            //if (MyPhysics.HavokWorld.Gravity != Vector3.Zero)
-            //    DrawGravityVectorIndicator(position, MyPhysics.HavokWorld.Gravity, MyHudTexturesEnum.gravity_arrow, Color.Gray);
+				DrawGravityVectorIndicator(vectorPosition, generatorGravity, MyHudTexturesEnum.gravity_arrow, Color.Gray);
 
             if (anyGravity)
-                DrawGravityVectorIndicator(position, gravity, MyHudTexturesEnum.gravity_arrow, Color.White);
+				DrawGravityVectorIndicator(vectorPosition, totalGravity, MyHudTexturesEnum.gravity_arrow, Color.White);
 
             // Draw center
             MyAtlasTextureCoordinate centerTextCoord;
@@ -423,7 +558,7 @@ namespace Sandbox.Game.Gui
 
             MyRenderProxy.DrawSpriteAtlas(
                 m_atlas,
-                position,
+				vectorPosition,
                 centerTextCoord.Offset,
                 centerTextCoord.Size,
                 rightVector,
@@ -465,7 +600,7 @@ namespace Sandbox.Game.Gui
                 align);
         }
 
-        private void DrawPowerGroupInfo(MyHudConsumerGroupInfo info)
+        private void DrawPowerGroupInfo(MyHudSinkGroupInfo info)
         {
             var fsRect = MyGuiManager.GetSafeFullscreenRectangle();
             float namesOffset = -0.25f / (fsRect.Width / (float)fsRect.Height);
@@ -487,13 +622,100 @@ namespace Sandbox.Game.Gui
 
             bg = MyGuiConstants.TEXTURE_HUD_BG_MEDIUM_DEFAULT;
             bgScale = new Vector2(1.1f, 1f);
-            MyGuiManager.DrawSpriteBatch(bg.Texture, bgPos, new Vector2(bg.SizeGui.X * bgScale.X, suitInfo.Data.GetGuiHeight()), Color.White, align);
+			var bgWidth = (!MyHud.ShipInfo.Visible || MyUtils.IsZero(m_gravityHudWidth)) ? bg.SizeGui.X * bgScale.X : m_gravityHudWidth;
+			MyGuiManager.DrawSpriteBatch(bg.Texture, bgPos, new Vector2(bgWidth, suitInfo.Data.GetGuiHeight()), Color.White, align);
 
             namePos = bgPos + new Vector2(1f, -1f) * bg.PaddingSizeGui * bgScale;
-            valuePos = bgPos + bgScale * (new Vector2(bg.SizeGui.X, 0f) - bg.PaddingSizeGui);
+			valuePos = bgPos + (new Vector2(bgWidth, 0f) - bg.PaddingSizeGui);
 
             suitInfo.Data.DrawBottomUp(namePos, valuePos, m_textScale);
         }
+
+		private float FindDistanceToNearestPlanetSeaLevel(Vector3D worldPoint, out MyPlanet closestPlanet)
+		{
+			ProfilerShort.Begin("FindNearestPointOnPlanet");
+            closestPlanet = MyGravityProviderSystem.GetNearestPlanet(worldPoint);
+			double closestDistance = double.MaxValue;
+            if (closestPlanet != null)
+            {
+                closestDistance = ((worldPoint - closestPlanet.PositionComp.GetPosition()).Length() - closestPlanet.AverageRadius);
+            }
+			ProfilerShort.End();
+
+			return (float)closestDistance;
+		}
+
+		private void DrawArtificialHorizonAndAltitude()
+		{
+			var controlledEntity = MySession.Static.ControlledEntity as MyCubeBlock;
+			var controlledEntityPosition = controlledEntity.CubeGrid.Physics.CenterOfMassWorld;
+			var controlledEntityCenterOfMass = controlledEntity.GetTopMostParent().Physics.CenterOfMassWorld;
+			if (controlledEntity == null)
+				return;
+
+			var shipController = controlledEntity as MyShipController;
+			if(shipController != null && !shipController.HorizonIndicatorEnabled)
+				return;
+
+			MyPlanet nearestPlanet;
+			FindDistanceToNearestPlanetSeaLevel(controlledEntityPosition, out nearestPlanet);
+			if (nearestPlanet == null)
+				return;
+
+            Vector3D closestPoint = nearestPlanet.GetClosestSurfacePointGlobal(ref controlledEntityPosition);
+            float distanceToSeaLevel = (float)Vector3D.Distance(closestPoint, controlledEntityPosition);
+
+			MyFontEnum altitudeFont = MyFontEnum.Blue;
+			var altitudeAlignment = MyGuiDrawAlignEnum.HORISONTAL_LEFT_AND_VERTICAL_CENTER;
+			var altitude = distanceToSeaLevel;
+            var altitudeText = new StringBuilder().AppendDecimal(altitude, 0).Append(" m");
+
+			var altitudeVerticalOffset = 0.03f;
+			var widthRatio = MyGuiManager.GetFullscreenRectangle().Width / MyGuiManager.GetSafeFullscreenRectangle().Width;
+			var heightRatio = MyGuiManager.GetFullscreenRectangle().Height / MyGuiManager.GetSafeFullscreenRectangle().Height;
+			var altitudePosition = new Vector2(MyHud.Crosshair.Position.X * widthRatio / MyGuiManager.GetHudSize().X/* - MyHud.Crosshair.HalfSize.X*m_textScale*/, MyHud.Crosshair.Position.Y * heightRatio / MyGuiManager.GetHudSize().Y + altitudeVerticalOffset);
+
+			if (MyVideoSettingsManager.IsTripleHead())
+                altitudePosition.X += 1.0f;
+
+			MyGuiManager.DrawString(altitudeFont, altitudeText, altitudePosition, m_textScale, drawAlign: altitudeAlignment, fullscreen: true);
+
+			var planetSurfaceNormal = -nearestPlanet.GetWorldGravityNormalized(ref controlledEntityCenterOfMass);
+
+			var rotationMatrix = controlledEntity.WorldMatrix;
+			rotationMatrix.Translation = Vector3D.Zero;
+			rotationMatrix.Up = planetSurfaceNormal;
+			rotationMatrix.Forward = Vector3D.Normalize(Vector3D.Reject(planetSurfaceNormal, controlledEntity.WorldMatrix.Forward));
+			rotationMatrix.Left = rotationMatrix.Up.Cross(rotationMatrix.Forward);
+			var planetSurfaceTangent = Vector3D.Normalize(Vector3D.Transform(Vector3D.Forward, rotationMatrix));
+
+			double cosVerticalAngle = planetSurfaceNormal.Dot(controlledEntity.WorldMatrix.Forward);
+			var scale = 0.75f;
+
+			var horizonDefaultCenterPosition = MyGuiManager.GetNormalizedCoordinateFromScreenCoordinate_FULLSCREEN(MyHud.Crosshair.Position / MyGuiManager.GetHudSize() * new Vector2(MyGuiManager.GetFullscreenRectangle().Width, MyGuiManager.GetFullscreenRectangle().Height));
+			var horizonAlignment = MyGuiDrawAlignEnum.HORISONTAL_CENTER_AND_VERTICAL_CENTER;
+			var horizonTexture = MyGuiConstants.TEXTURE_HUD_GRAVITY_HORIZON;
+			var horizonSize = horizonTexture.SizeGui;
+
+            float offsetLimit;
+            if (MySession.Static.GetCameraControllerEnum() == MyCameraControllerEnum.ThirdPersonSpectator)
+                offsetLimit = 0.45f;
+            else
+                offsetLimit = 0.35f;
+            float distanceFromCenter = (float)cosVerticalAngle*offsetLimit;
+
+			float cosRotation = Vector3.Reject(planetSurfaceTangent, controlledEntity.WorldMatrix.Forward).Dot(controlledEntity.WorldMatrix.Up);
+			float rotation = (float)Math.Acos(cosRotation);
+			if (nearestPlanet.GetWorldGravityGrid(controlledEntityCenterOfMass).Dot(controlledEntity.WorldMatrix.Right) >= 0)
+				rotation = 2.0f * (float)Math.PI - rotation;//roll, direction to the left,
+            float sinRotation = (float)Math.Sin(rotation);
+			Vector2 magicOffset = new Vector2(0.0145f, 0.0175f);	// DrawSpriteBatch with rotation needs this
+            var horizonPosition = new Vector2(-sinRotation * distanceFromCenter,
+                                              cosRotation * distanceFromCenter);
+            horizonPosition += horizonDefaultCenterPosition + scale * horizonSize / 2.0f + magicOffset;
+		
+		    MyGuiManager.DrawSpriteBatch(horizonTexture.Texture, horizonPosition, scale, Color.White, horizonAlignment, rotation, new Vector2(0.5f));
+		}
 
         private void DrawObjectiveLine(MyHudObjectiveLine objective)
         {
@@ -555,7 +777,7 @@ namespace Sandbox.Game.Gui
             bgScale = new Vector2(1.1f, 1f);
             MyGuiManager.DrawSpriteBatch(bg.Texture, bgPos, new Vector2(bg.SizeGui.X * bgScale.X, scenarioInfo.Data.GetGuiHeight()), Color.White, align);
 
-            namePos.X = bgPos.X - (bg.SizeGui.X-bg.PaddingSizeGui.X) * bgScale.X;
+            namePos.X = bgPos.X - (bg.SizeGui.X - bg.PaddingSizeGui.X) * bgScale.X;
             namePos.Y = bgPos.Y + bg.PaddingSizeGui.Y * bgScale.Y;
 
             valuePos.X = bgPos.X - bgScale.X * bg.PaddingSizeGui.X;
@@ -633,7 +855,12 @@ namespace Sandbox.Game.Gui
                     Vector3D oreWorldPosition;
                     depositData.ComputeWorldPosition(oreMarker.VoxelMap, out oreWorldPosition);
 
-                    var distanceSquared = Vector3.DistanceSquared((Vector3)oreWorldPosition, (Vector3)((MyEntity)MySession.ControlledEntity).WorldMatrix.Translation);
+                    float distanceSquared = float.MaxValue;
+                    if (MySession.Static != null && MySession.Static.ControlledEntity != null)
+                    {
+                       distanceSquared = Vector3.DistanceSquared((Vector3)oreWorldPosition, (Vector3)((MyEntity)MySession.Static.ControlledEntity).WorldMatrix.Translation);
+                    }
+
                     float nearestDistanceSquared = m_nearestDistanceSquared[oreMaterial.Index];
                     if (distanceSquared < nearestDistanceSquared)
                     {
@@ -706,7 +933,7 @@ namespace Sandbox.Game.Gui
                     continue;
 
                 m_markerRender.DrawLocationMarker(
-                    m_markerRender.GetStyleForRelation(MyRelationsBetweenPlayerAndBlock.Enemies),
+                    m_markerRender.GetStyleForRelation(VRage.Game.MyRelationsBetweenPlayerAndBlock.Enemies),
                     target.Key.PositionComp.WorldAABB.Center,
                     hudParams,
                     0,
@@ -722,7 +949,7 @@ namespace Sandbox.Game.Gui
             if (checker.WorldCenterHintVisible)
             {
                 m_markerRender.DrawLocationMarker(
-                    m_markerRender.GetStyleForRelation(MyRelationsBetweenPlayerAndBlock.Enemies),
+                    m_markerRender.GetStyleForRelation(VRage.Game.MyRelationsBetweenPlayerAndBlock.Enemies),
                     Vector3.Zero,
                     MyHudWorldBorderChecker.HudEntityParams,
                     0.0f,
@@ -751,7 +978,7 @@ namespace Sandbox.Game.Gui
 
                     var hudParams2 = hudParams;
                     //hudParams2.Text = new StringBuilder("sdsdff");
-                    Vector3 position = Vector3.Transform(hudParams2.RelativePosition, (Matrix)hudParams2.Parent.WorldMatrix);
+                    Vector3 position = hudParams2.Entity.PositionComp.GetPosition();
 
                     m_markerRender.DrawLocationMarker(
                         m_markerRender.GetStyleForRelation(hudParams.TargetMode),

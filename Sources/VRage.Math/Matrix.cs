@@ -395,28 +395,13 @@ namespace VRageMath
             }
         }
 
-        /*  This is just very wrong
-        public Vector3 Scale
-        {
-            get
-            {
-                return new Vector3(M11, M22, M33);
-            }
-            set
-            {
-                M11 = value.X;
-                M22 = value.Y;
-                M33 = value.Z;
-            }
-        } */
-
 
         public Vector3 Scale
         {
             get
             {
-                //return new Vector3(Right.Length(), Up.Length(), Forward.Length());
-                return new Vector3(Col0.Length(), Col1.Length(), Col2.Length());
+                return new Vector3(Right.Length(), Up.Length(), Forward.Length());
+                //return new Vector3(Col0.Length(), Col1.Length(), Col2.Length());
             }
         }
 
@@ -1962,6 +1947,11 @@ namespace VRageMath
             result.M42 = -Vector3.Dot(vector1, cameraPosition);
             result.M43 = -Vector3.Dot(vector3_1, cameraPosition);
             result.M44 = 1f;
+        }
+
+        public static Matrix CreateWorld(Vector3 position)
+        {
+            return Matrix.CreateWorld(position, Vector3.Forward, Vector3.Up);
         }
 
         /// <summary>

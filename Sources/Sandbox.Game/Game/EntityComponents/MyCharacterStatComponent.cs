@@ -1,23 +1,12 @@
-﻿using ProtoBuf;
-using Sandbox.Common.ObjectBuilders.ComponentSystem;
+﻿using VRage.Game.ObjectBuilders.ComponentSystem;
 using Sandbox.Definitions;
-using Sandbox.Engine.Multiplayer;
 using Sandbox.Game.Entities;
 using Sandbox.Game.Entities.Character;
 using Sandbox.Game.Multiplayer;
-using Sandbox.Game.World;
-using Sandbox.Common.ObjectBuilders.Definitions;
-using SteamSDK;
-using System;
-using System.Collections.Generic;
-using System.Diagnostics;
 using VRage;
-using VRage.Collections;
-using VRage.Components;
+using VRage.Game.Components;
 using VRage.Game.ObjectBuilders;
 using VRage.Utils;
-using VRageMath;
-using VRageRender;
 
 namespace Sandbox.Game.Components
 {
@@ -36,7 +25,7 @@ namespace Sandbox.Game.Components
             }
         }
 
-		public float HealthRatio { get { var retVal = 1.0f; var health = Health; if (Health != null) retVal = health.Value/health.MaxValue; return retVal; } }
+        public float HealthRatio { get { var retVal = 1.0f; var health = Health; if (health != null) retVal = health.Value / health.MaxValue; return retVal; } }
 
 		public static readonly float LOW_HEALTH_RATIO = 0.2f;
 
@@ -86,7 +75,7 @@ namespace Sandbox.Game.Components
 		{
 			if (m_character != null && !m_character.IsDead)
 			{
-				m_character.PlayDamageSound(oldHealth);
+				m_character.SoundComp.PlayDamageSound(oldHealth);
 			}
 			else
 				return;

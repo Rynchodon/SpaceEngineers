@@ -13,6 +13,11 @@ using Sandbox.Game.Multiplayer;
 using Sandbox.ModAPI;
 using Sandbox.Game.Entities;
 using Sandbox.Game.GameSystems;
+using Sandbox.Engine.Networking;
+using Sandbox.Engine.Utils;
+using VRage.Game;
+using VRage.Game.Components;
+using VRage.Game.Entity;
 
 namespace Sandbox.Game.SessionComponents
 {
@@ -26,9 +31,9 @@ namespace Sandbox.Game.SessionComponents
         private int m_updateCount = 0;
         public override void UpdateBeforeSimulation()
         {
-            if (!MySession.Static.IsScenario
+            if (!(MySession.Static.IsScenario || MySession.Static.Settings.ScenarioEditMode)
                 || MyScenarioSystem.Static == null
-                || MyScenarioSystem.Static.GameState != Sandbox.Game.GameSystems.MyScenarioSystem.MyState.Running)
+                || MyScenarioSystem.Static.GameState < Sandbox.Game.GameSystems.MyScenarioSystem.MyState.Running)
                 return;
 
             m_updateCount++;
@@ -86,7 +91,11 @@ namespace Sandbox.Game.SessionComponents
             if (!mtrig.Won)
                 mtrig.UpdateLose(player, entity);
             else
+            {
                 m_someoneWon = true;
+                MyAnalyticsHelper.ReportTutorialEnd();
+                MyTutorialHelper.MissionSuccess();
+            }
             return mtrig.Lost;
         }
 
@@ -109,11 +118,12 @@ namespace Sandbox.Game.SessionComponents
 
         public static bool CanRespawn(MyPlayer.PlayerId Id)
         {
+            if (MySession.Static.Settings.ScenarioEditMode)
+                return true;
             //beware, can be unreliable on client - you can call it before newest info from server arrives
             MyMissionTriggers mtrig;
             if (!Static.MissionTriggers.TryGetValue(Id, out mtrig))
             {
-                Debug.Fail("Bad ID for CanRespawn");
                 return true;
             }
             return !mtrig.Lost;
@@ -122,8 +132,8 @@ namespace Sandbox.Game.SessionComponents
         #region displaying win/lose message on local computer
         private void UpdateLocal()
         {
-            if (!MySandboxGame.IsDedicated && MySession.LocalHumanPlayer != null)
-                UpdateLocal(MySession.LocalHumanPlayer);
+            if (!MySandboxGame.IsDedicated && MySession.Static.LocalHumanPlayer != null)
+                UpdateLocal(MySession.Static.LocalHumanPlayer);
         }
         private void UpdateLocal(MyPlayer player)
         {
@@ -183,7 +193,7 @@ namespace Sandbox.Game.SessionComponents
         #endregion
         private bool IsLocal(MyPlayer.PlayerId Id)
         {
-            if (!MySandboxGame.IsDedicated && MySession.LocalHumanPlayer!=null && Id == MySession.LocalHumanPlayer.Id)
+            if (!MySandboxGame.IsDedicated && MySession.Static.LocalHumanPlayer!=null && Id == MySession.Static.LocalHumanPlayer.Id)
                 return true;
             return false;
         }

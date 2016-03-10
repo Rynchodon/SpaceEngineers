@@ -13,6 +13,13 @@ using VRage.ObjectBuilders;
 using Sandbox.Game.Entities;
 using Sandbox.Game.Localization;
 using VRage;
+using Sandbox.Game.GameSystems;
+using VRage.Game;
+using VRage.Game.Common;
+using VRage.Game.Entity;
+using Sandbox.Game.SessionComponents;
+using VRage.Network;
+using Sandbox.Engine.Multiplayer;
 
 namespace Sandbox.Game.World.Triggers
 {
@@ -24,6 +31,7 @@ namespace Sandbox.Game.World.Triggers
         PLAYER_DIED,
     };
 
+    [StaticEventOwner]
     public class MyMissionTriggers
     {
         public static readonly MyPlayer.PlayerId DefaultPlayerId = new MyPlayer.PlayerId(0, 0);
@@ -41,7 +49,7 @@ namespace Sandbox.Game.World.Triggers
                 Message = m_winTriggers[triggerIndex].Message;
                 IsMsgWinning = true;
             }
-            Sync.Players.RespawnComponent.CloseRespawnScreen();
+            DoEnd();
         }
         public bool Lost { get; protected set; }
         public void SetLost(int triggerIndex)
@@ -53,15 +61,22 @@ namespace Sandbox.Game.World.Triggers
                 Message = m_loseTriggers[triggerIndex].Message;
                 IsMsgWinning = false;
             }
-            Sync.Players.RespawnComponent.CloseRespawnScreen();
+            DoEnd();
         }
+        protected void DoEnd()
+        {
+            if (!MySession.Static.Settings.ScenarioEditMode)
+                Sync.Players.RespawnComponent.CloseRespawnScreen();
+            MyScenarioSystem.Static.GameState = MyScenarioSystem.MyState.Ending;
+        }
+
         public string Message {get; protected set;}
         public bool IsMsgWinning { get; protected set; }
         public bool DisplayMsg()
         {
             if (Message != null && m_notification==null)
             {
-                m_notification=MyAPIGateway.Utilities.CreateNotification(Message, 0, (IsMsgWinning ? Sandbox.Common.MyFontEnum.Green : Sandbox.Common.MyFontEnum.Red));
+                m_notification=MyAPIGateway.Utilities.CreateNotification(Message, 0, (IsMsgWinning ? MyFontEnum.Green : MyFontEnum.Red));
                 m_notification.Show();
                 return true;
             }
@@ -81,7 +96,7 @@ namespace Sandbox.Game.World.Triggers
                 var trigger=m_winTriggers[i];
                 if (trigger.IsTrue || trigger.Update(player, me))
                 { //Won!
-                    MySyncMissionTriggers.PlayerWon(player.Id, i);
+                    SetPlayerWon(player.Id, i);
                     return true;
                 }
             }
@@ -96,7 +111,7 @@ namespace Sandbox.Game.World.Triggers
                 var trigger = m_loseTriggers[i];
                 if (trigger.IsTrue || trigger.Update(player, me))
                 { //Loser!
-                    MySyncMissionTriggers.PlayerLost(player.Id, i);
+                    SetPlayerLost(player.Id, i);
                     return true;
                 }
             }
@@ -117,7 +132,7 @@ namespace Sandbox.Game.World.Triggers
                         var trigger = m_winTriggers[i];
                         if (trigger.IsTrue || trigger.RaiseSignal(signal))
                         { //Won!
-                            MySyncMissionTriggers.PlayerWon(Id, i);
+                            SetPlayerWon(Id, i);
                             return true;
                         }
                     }
@@ -127,7 +142,7 @@ namespace Sandbox.Game.World.Triggers
                         var trigger = m_loseTriggers[i];
                         if (trigger.IsTrue || trigger.RaiseSignal(signal))
                         {//Lost
-                            MySyncMissionTriggers.PlayerLost(Id, i);
+                            SetPlayerLost(Id, i);
                             return true;
                         }
                     }
@@ -140,7 +155,7 @@ namespace Sandbox.Game.World.Triggers
             return false;
         }
 
-        public void DisplayHints(MyPlayer player, Entities.MyEntity me)
+        public void DisplayHints(MyPlayer player, MyEntity me)
         {
             for (int i = 0; i < m_winTriggers.Count; i++)
                 m_winTriggers[i].DisplayHints(player, me);
@@ -235,6 +250,36 @@ namespace Sandbox.Game.World.Triggers
                 m_notification.Hide();
                 m_notification = null;
             }
+        }
+
+        static void SetPlayerWon(MyPlayer.PlayerId id, int triggerIndex)
+        {
+            MySessionComponentMissionTriggers.Static.SetWon(id, triggerIndex);
+            if (!Sync.MultiplayerActive || !MySession.Static.IsScenario)
+                return;
+
+            MyMultiplayer.RaiseStaticEvent(s => MyMissionTriggers.OnPlayerWon, id, triggerIndex);
+        }
+
+        static void SetPlayerLost(MyPlayer.PlayerId id, int triggerIndex)
+        {
+            MySessionComponentMissionTriggers.Static.SetLost(id, triggerIndex);
+            if (!Sync.MultiplayerActive || !MySession.Static.IsScenario)
+                return;
+
+            MyMultiplayer.RaiseStaticEvent(s => MyMissionTriggers.OnPlayerLost, id, triggerIndex);
+        }
+
+        [Event, Reliable, Broadcast]
+        static void OnPlayerWon(MyPlayer.PlayerId id, int triggerIndex)
+        {
+            MySessionComponentMissionTriggers.Static.SetWon(id, triggerIndex);
+        }
+
+        [Event, Reliable, Broadcast]
+        static void OnPlayerLost(MyPlayer.PlayerId id, int triggerIndex)
+        {
+            MySessionComponentMissionTriggers.Static.SetLost(id, triggerIndex);
         }
     }
 

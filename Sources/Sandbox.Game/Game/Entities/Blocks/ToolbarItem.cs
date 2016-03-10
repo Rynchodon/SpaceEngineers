@@ -3,19 +3,24 @@ using ProtoBuf;
 using Sandbox.Common.ObjectBuilders;
 using Sandbox.Game.Entities.Cube;
 using Sandbox.Game.Screens.Helpers;
+using VRage.Game;
+using VRage.Serialization;
 
 namespace Sandbox.Game.Entities.Blocks
 {
     [ProtoContract]
-    internal struct ToolbarItem
+    public struct ToolbarItem
     {
         [ProtoMember]
         public long EntityID;
         [ProtoMember]
+        [Serialize(MyObjectFlags.Nullable)]
         public string GroupName;
         [ProtoMember]
+        [Serialize(MyObjectFlags.Nullable)]
         public string Action;
         [ProtoMember]
+        [Serialize(MyObjectFlags.Nullable)]
         public List<MyObjectBuilder_ToolbarItemActionParameter> Parameters;
 
         public static ToolbarItem FromItem(MyToolbarItem item)

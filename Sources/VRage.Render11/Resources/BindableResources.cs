@@ -279,10 +279,11 @@ namespace VRageRender
         }
     }
 
-    class MyUnorderedAccessTexture : MyBindableResource, IUnorderedAccessBindable, IShaderResourceBindable
+    class MyUnorderedAccessTexture : MyBindableResource, IUnorderedAccessBindable, IShaderResourceBindable, IRenderTargetBindable
     {
         internal ShaderResourceView m_SRV;
         internal UnorderedAccessView m_UAV;
+        internal RenderTargetView m_RTV;
 
         internal Vector2I m_resolution;
 
@@ -296,6 +297,11 @@ namespace VRageRender
             get { return m_UAV; }
         }
 
+        RenderTargetView IRenderTargetBindable.RTV
+        {
+            get { return m_RTV; }
+        }
+
         internal override void Release()
         {
             if (m_SRV != null)
@@ -307,6 +313,11 @@ namespace VRageRender
             {
                 m_UAV.Dispose();
                 m_UAV = null;
+            }
+            if (m_RTV != null)
+            {
+                m_RTV.Dispose();
+                m_RTV = null;
             }
 
             base.Release();
@@ -327,7 +338,7 @@ namespace VRageRender
             desc.Format = format;
             desc.ArraySize = 1;
             desc.MipLevels = 1;
-            desc.BindFlags = BindFlags.UnorderedAccess | BindFlags.ShaderResource;
+            desc.BindFlags = BindFlags.UnorderedAccess | BindFlags.ShaderResource | BindFlags.RenderTarget;
             desc.Usage = ResourceUsage.Default;
             desc.CpuAccessFlags = 0;
             desc.SampleDescription.Count = 1;
@@ -337,6 +348,7 @@ namespace VRageRender
             m_resource = new Texture2D(MyRender11.Device, desc);
             m_UAV = new UnorderedAccessView(MyRender11.Device, m_resource);
             m_SRV = new ShaderResourceView(MyRender11.Device, m_resource);
+            m_RTV = new RenderTargetView(MyRender11.Device, m_resource);
         }
     }
 
@@ -351,6 +363,22 @@ namespace VRageRender
     {
         internal MyViewEnum View;
         internal Format Fmt;
+
+        #region Equals
+        public class MyViewKeyComparerType : IEqualityComparer<MyViewKey>
+        {
+            public bool Equals(MyViewKey left, MyViewKey right)
+            {
+                return left.View == right.View && left.Fmt == right.Fmt;
+            }
+
+            public int GetHashCode(MyViewKey viewKey)
+            {
+                return (int)viewKey.View << 16 + (int)viewKey.Fmt;
+            }
+        }
+        public static readonly MyViewKeyComparerType Comparer = new MyViewKeyComparerType();
+        #endregion
     }
 
     class MySrvView : MyBindableResource, IShaderResourceBindable
@@ -503,7 +531,7 @@ namespace VRageRender
     {
         internal Vector2I m_resolution;
 
-        internal Dictionary<MyViewKey, MyBindableResource> m_views = new Dictionary<MyViewKey, MyBindableResource>();
+        internal Dictionary<MyViewKey, MyBindableResource> m_views = new Dictionary<MyViewKey, MyBindableResource>(MyViewKey.Comparer);
 
         internal MyCustomTexture(int width, int height, BindFlags bindflags,
             Format format)

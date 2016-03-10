@@ -1,7 +1,7 @@
-﻿using Sandbox.Common.ObjectBuilders.Gui;
-using Sandbox.Engine.Utils;
+﻿using Sandbox.Engine.Utils;
 using Sandbox.Game.Entities;
 using Sandbox.Game.Localization;
+using Sandbox.Game.World;
 using Sandbox.Graphics.GUI;
 using System;
 using System.Collections.Generic;
@@ -9,7 +9,7 @@ using System.Diagnostics;
 using System.Linq;
 using System.Text;
 using VRage;
-using VRage;
+using VRage.Game;
 using VRage.Input;
 using VRage.Utils;
 using VRageMath;
@@ -33,6 +33,12 @@ namespace Sandbox.Game.Screens.Helpers
                 return m_shownToolbar; 
             }
         }
+        public MyGuiControlGrid ToolbarGrid
+        {
+            get {
+                return m_toolbarItemsGrid;
+            }
+        }
 
         private int m_contextMenuItemIndex = -1;
 
@@ -50,6 +56,12 @@ namespace Sandbox.Game.Screens.Helpers
 
         #region Overrides
 
+        protected override void OnVisibleChanged()
+        {
+            base.OnVisibleChanged();
+            MyToolbarComponent.IsToolbarControlShown = this.Visible;
+        }        
+
         public override void OnRemoving()
         {
             MyToolbarComponent.CurrentToolbarChanged -= ToolbarComponent_CurrentToolbarChanged;
@@ -63,7 +75,9 @@ namespace Sandbox.Game.Screens.Helpers
                 m_shownToolbar.CurrentPageChanged -= Toolbar_CurrentPageChanged;
                 m_shownToolbar = null;
             }
-
+            
+            MyToolbarComponent.IsToolbarControlShown = false;
+            
             base.OnRemoving();
         }
 
@@ -90,10 +104,8 @@ namespace Sandbox.Game.Screens.Helpers
 
         public override void Draw(float transitionAlpha, float backgroundTransitionAlpha)
         {
-            Color c = Color.White;
-            if (MyToolbar.ColorMaskHSV != null)
-                c = (new Vector3(MyToolbar.ColorMaskHSV.X, MathHelper.Clamp(MyToolbar.ColorMaskHSV.Y + 0.8f, 0f, 1f), MathHelper.Clamp(MyToolbar.ColorMaskHSV.Z + 0.55f, 0f, 1f))).HSVtoColor();
-            m_colorVariantPanel.ColorMask = c.ToVector4();//MyCubeBuilder.VariantColor;
+			Color c = (new Vector3(MyPlayer.SelectedColor.X, MathHelper.Clamp(MyPlayer.SelectedColor.Y + 0.8f, 0f, 1f), MathHelper.Clamp(MyPlayer.SelectedColor.Z + 0.55f, 0f, 1f))).HSVtoColor();
+            m_colorVariantPanel.ColorMask = c.ToVector4();
             base.Draw(transitionAlpha, backgroundTransitionAlpha);
         }
 
@@ -210,7 +222,7 @@ namespace Sandbox.Game.Screens.Helpers
                 m_colorVariantPanel.Visible = MyFakes.ENABLE_BLOCK_COLORING; // character != null;
                 
                 if (toolbar.ShowHolsterSlot)
-                    SetGridItemAt(slotCount, new MyToolbarItemEmpty(), @"Textures\GUI\Icons\HideWeapon.dds", null, MyTexts.GetString(MySpaceTexts.HideWeapon));
+                    SetGridItemAt(slotCount, new MyToolbarItemEmpty(), @"Textures\GUI\Icons\HideWeapon.dds", null, MyTexts.GetString(MyCommonTexts.HideWeapon));
 
                 if(toolbar.PageCount > 1)
                     for (int i = 0; i < toolbar.PageCount; ++i)
@@ -233,11 +245,17 @@ namespace Sandbox.Game.Screens.Helpers
                 HighlightCurrentPageLabel();
                 RefreshSelectedItem(toolbar);
 
+                m_shownToolbar.ItemChanged -= Toolbar_ItemChanged;
                 m_shownToolbar.ItemChanged += Toolbar_ItemChanged;
+                m_shownToolbar.ItemUpdated -= Toolbar_ItemUpdated;
                 m_shownToolbar.ItemUpdated += Toolbar_ItemUpdated;
+                m_shownToolbar.SelectedSlotChanged -= Toolbar_SelectedSlotChanged;
                 m_shownToolbar.SelectedSlotChanged += Toolbar_SelectedSlotChanged;
+                m_shownToolbar.SlotActivated -= Toolbar_SlotActivated;
                 m_shownToolbar.SlotActivated += Toolbar_SlotActivated;
+                m_shownToolbar.ItemEnabledChanged -= Toolbar_ItemEnabledChanged;
                 m_shownToolbar.ItemEnabledChanged += Toolbar_ItemEnabledChanged;
+                m_shownToolbar.CurrentPageChanged -= Toolbar_CurrentPageChanged;
                 m_shownToolbar.CurrentPageChanged += Toolbar_CurrentPageChanged;
 
                 MaxSize = MinSize = new Vector2(m_toolbarItemsGrid.Size.X, m_toolbarItemsGrid.Size.Y + m_selectedItemLabel.Size.Y + m_colorVariantPanel.Size.Y);
@@ -269,7 +287,7 @@ namespace Sandbox.Game.Screens.Helpers
         {
             int page = m_shownToolbar.CurrentPage;
 
-            for (int i = 0; i < m_pageLabelList.Count(); ++i)
+            for (int i = 0; i < m_pageLabelList.Count; ++i)
             {
                 if (i != page && m_pageLabelList[i].BackgroundTexture == MyGuiConstants.TEXTURE_TOOLBAR_TAB_HIGHLIGHT)
                 {
@@ -361,7 +379,7 @@ namespace Sandbox.Game.Screens.Helpers
         }
 
         private void Toolbar_ItemChanged(MyToolbar toolbar, MyToolbar.IndexArgs args)
-        {
+        {            
             UpdateItemAtIndex(toolbar, args.ItemIndex);
         }
 
@@ -394,13 +412,13 @@ namespace Sandbox.Game.Screens.Helpers
             if (args.SlotNumber.HasValue)
             {
                 var idx = args.SlotNumber.Value;
-                m_toolbarItemsGrid.GetItemAt(idx).Enabled = toolbar.IsEnabled(idx);
+                m_toolbarItemsGrid.GetItemAt(idx).Enabled = toolbar.IsEnabled(toolbar.SlotToIndex(idx));
             }
             else
             {
                 for (int i = 0; i < m_toolbarItemsGrid.ColumnsCount; ++i)
                 {
-                    m_toolbarItemsGrid.GetItemAt(i).Enabled = toolbar.IsEnabled(i);
+                    m_toolbarItemsGrid.GetItemAt(i).Enabled = toolbar.IsEnabled(toolbar.SlotToIndex(i));
                 }
             }
         }
@@ -517,6 +535,29 @@ namespace Sandbox.Game.Screens.Helpers
             m_contextMenuItemIndex = -1;
         }
 
+        public void HandleDragAndDrop(object sender, MyDragAndDropEventArgs eventArgs)
+        {
+            MyToolbarItem toolbarItem = eventArgs.Item.UserData as MyToolbarItem;
+            if (toolbarItem != null)
+            {
+                var itemIndex = MyToolbarComponent.CurrentToolbar.GetItemIndex(toolbarItem);
+                if (eventArgs.DropTo != null && IsToolbarGrid(eventArgs.DropTo.Grid))
+                {
+                    var dropToItem = MyToolbarComponent.CurrentToolbar.GetItemAtSlot(eventArgs.DropTo.ItemIndex);
+                    var itemSlot = MyToolbarComponent.CurrentToolbar.IndexToSlot(itemIndex);
+                    var dropSlot = eventArgs.DropTo.ItemIndex;
+                    MyToolbarComponent.CurrentToolbar.SetItemAtSlot(dropSlot, toolbarItem);
+                    MyToolbarComponent.CurrentToolbar.SetItemAtSlot(itemSlot, dropToItem);
+                }
+                else
+                {
+                    MyToolbarComponent.CurrentToolbar.SetItemAtIndex(itemIndex, null);
+                }
+            }
+        }
+
         #endregion
+
+       
     }
 }
